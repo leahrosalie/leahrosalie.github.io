@@ -1,0 +1,111 @@
+---
+title: "Network Analysis HW #1"
+description: |
+  My first homework assignment for POLISCI 753 Political and Social Networks.
+author:
+  - name: Leah Dion
+    url: https://leahrosalie.github.io
+date: 02-02-2022
+output:
+  distill::distill_article:
+    self_contained: false
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(statnet)
+library(igraph)
+library(tidyverse)
+```
+
+For this assignment I'm going to use the Game of Thrones like and dislike dataset. First, I need to read in the CSV file and adjust the data structure to be in the form needed to make an igraph and statnet object from the adjacency matrix.
+
+```{r}
+got <- read.csv('got_like_dislike.csv', header=TRUE, 
+                stringsAsFactors = FALSE)
+
+got.net <- as.matrix(got[4:49])
+rownames(got.net) <- got$Name
+net.nodes <- got[c("Name","Current.house","Former.house")]
+got.ig <- graph_from_adjacency_matrix(got.net, mode = "directed",
+                                      weighted = TRUE, 
+                                      add.colnames = NA, 
+                                      add.rownames = "name")
+```
+
+Now, making the igraph object.
+
+```{r}
+V(got.ig)$Current.house <- net.nodes$Current.house[match(net.nodes$Name, 
+                                                         V(got.ig)$name)]
+V(got.ig)$Former.house <- net.nodes$Former.house[match(net.nodes$Name, 
+                                                       V(got.ig)$name)]
+```
+
+And the statnet object.
+
+```{r}
+got.stat <- network(got.net, matrix.type = "adjacency", directed = TRUE)
+got.stat <- set.edge.value(got.stat, attrname = "weight", value = got.net)
+    
+got.stat%v%"Current.house" <- net.nodes$Current.house[match(net.nodes$Name, 
+                                                            got.stat%v%'vertex.names')]
+got.stat%v%"Former.house"  <- net.nodes$Former.house[match(net.nodes$Name, 
+                                                           got.stat%v%'vertex.names')]
+
+```
+
+Next I want to take a look at the network attributes using the print() command.
+
+```{r}
+print(got.stat)
+is_weighted(got.ig)
+```
+
+Okay. So this GOT network has 46 nodes (vertices) and 1143 ties (edges). It is a directed network and is also weighted based on how much or little a character likes or dislikes another; negative is dislike and positive is like. Also, there are no missing edges so that should mean that we do not have any isolates.
+
+```{r}
+network::list.vertex.attributes(got.stat)
+network::list.edge.attributes(got.stat)
+```
+
+The vertex attributes are Current.house, Former.house, and vertex.names while the edge attribute is the weight of the two character's relationship.
+
+Next I'll explore the dyad and triad census.
+
+```{r}
+sna::dyad.census(got.stat)
+sna::triad.census(got.stat, mode='graph')
+sum(sna::triad.census(got.stat, mode='graph'))
+```
+
+The dyad census confirms that this is a directed network since there are asymmetric ties. It seems that a bit more than half of the dyads are mutual ties, which suggests that either there are more stable relationships on GOT than not or, potentially, this character list happens to include larger families such as the Starks that are mutually connected with shared enemies. 
+
+Having watched the show several times through I lean towards the latter, though it is particularly centered around the interconnectedness of large, dynamic families.
+
+There are 15,180 triads in the GOT network data and there are 1975 empty triads, 5109 with one edge, 4405 two path, and 3691 triangles.
+
+```{r}
+gtrans(got.stat)
+gtrans(got.stat, measure='rank')
+gtrans(got.stat, measure='correlation')
+```
+
+Playing around with the measure parameter, it seems that 'correlation' may incorporate the weights between nodes of the GOT network. My initial interpretation of this might be that the weights seem to weaken the transitivity of the network, though I will have to check back once I develop a deeper analytical lens.
+
+```{r}
+transitivity(got.ig, type='global')
+transitivity(got.ig, type='average')
+```
+
+It seems that the global clustering coefficient is slightly smaller than the local transitivity, perhaps suggesting that altiers of the nodes are themselves connected.
+
+```{r}
+igraph::components(got.ig)$no
+igraph::components(got.ig)$csize
+isolates(got.stat)
+```
+
+This last check of the network components reveals that there is just one major component that contains all 46 nodes, with no isolates. This aligns with the global and average transitivity analysis from above.

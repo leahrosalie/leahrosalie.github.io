@@ -1,0 +1,122 @@
+---
+title: "Network Analysis HW #2"
+description: |
+  My second homework assignment for POLISCI 753 Political and Social Networks.
+author:
+  - name: Leah Dion
+    url: https://leahrosalie.github.io
+date: 02-10-2022
+output:
+  distill::distill_article:
+    self_contained: false
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(statnet)
+library(igraph)
+library(tidyverse)
+```
+
+```{r, include=FALSE}
+load('/Users/leahleahleah/Documents/GitHub/leahrosalie.github.io/docs/gotig.rda')
+load('/Users/leahleahleah/Documents/GitHub/leahrosalie.github.io/docs/gotstat.rda')
+load('/Users/leahleahleah/Documents/GitHub/leahrosalie.github.io/docs/gotnet.rda')
+```
+
+The *Game of Thrones* like/dislike network contains 46 nodes, each of which are individual characters from the series of books by George R.R. Martin. The 1143 edges connecting the vertices represent the weight of the relationship between actors; larger numbers correspond to stronger positive relationships while smaller numbers correspond to stronger negative relationships. Simply put, a negative number indicates how much a character dislikes another while a positive number indicates how much a character likes another. The range of these likes and dislikes is $[-5, 5]$, so a score of either of the endpoints would mean that character likes, is liked, dislikes, or is disliked as much as possible.
+
+One thing that remains unclear is what it means to have a zero in a relationship. For an unweighted network a zero would clearly indicate there is not a connection between those two actors. For a weighted network that could also suggest that there is a mutual or neutral relationship that one actor feels toward another. For my brief analysis I'm going to assume that the zeroes mean no relationship exists between the two characters. I feel safe doing so because my knowledge of the *Game of Thrones* show and books validates that assumption after visual inspection of the adjacency matrix.
+
+The network is also directed, so the connection between actors $A$ and $B$ is not necessarily the same as that between $B$ and $A$. It appears that the columns represent outdegree relationships, or how much that character likes/dislikes other characters. The rows therefore are the inverse; how favorably/unfavorably the character is viewed by others, or the indegree.
+
+```{r}
+got.net['Jaime Lannister',]['Stannis.Baratheon']
+got.net['Stannis Baratheon',]['Jaime.Lannister']
+```
+
+Take Jaime Lannister and Stannis Baratheon for example. Stannis, notorious for hating pretty much everyone, seems to 
+dislike Jaime Lannister with a weight of 5. On the other hand, the kingslayer, notorious for being hated by pretty much everyone, dislikes Stannis by a factor of 4. 
+
+```{r}
+got.df <- data.frame(got.net)
+got.df[got.df == 0] <- NA
+
+got.df %>%
+  summarise_at(c('Jaime.Lannister', 'Stannis.Baratheon'), mean, na.rm=TRUE)
+```
+
+Checking the average of both Jaime and Stannis' outgoing ties, at a glance it seems that Jaime (-1.3) views other characters only slightly negatively so his disliking of Stannis is far outside of his mean. Comparing to Stannis' disliking of Jaime, it seems that may be closer to the mean (-2.91) of the middle Baratheon brother's relationships.
+
+
+```{r}
+got.df %>%
+  filter(row.names(got.df) %in% c('Jaime Lannister','Stannis Baratheon')) %>%
+  rowMeans(na.rm=TRUE)
+```
+
+Comparing now to the other character's feelings toward the two, people in the network seem to dislike Stannis (-2.58) quite a bit more than Jaime (-1.36). At the same time, it seems that Stannis dislikes others slightly more than others dislike him while Jaime is disliked slightly more than he dislikes others. This feels pretty accurate since it aligns well with my interpretation of the characters in the books and show.
+
+```{r}
+cmeans <- got.df %>%
+  summarise(across(1:46, mean, na.rm=TRUE)) %>%
+  t()
+arrange(data.frame(cmeans), cmeans) %>%
+  head()
+```
+
+It would be an understatement to say that Stannis Baratheon was obsessed with his claim to the iron throne and clearly ticked off a lot of people in his attempt to sit in it as king. In the process, he also despised everyone that got in his way and has the highest mean dislike toward others out of anyone (-2.91), followed closely behind by the dragon queen, Daenerys Targaryen (-2.89), and Stannis' right-hand witch, Melisandre (-2.65).
+
+```{r}
+rmeans <- got.df %>%
+  rowMeans(na.rm=TRUE)
+
+arrange(data.frame(rmeans), rmeans) %>%
+  head()
+```
+
+Sure enough, the top three most disliked by others are the mother of dragons (-2.77), Melisandre (-2.64), and Stannis (-2.58). Seems like in the *Game of Thrones* universe if you actively hate other characters and try to overthrow the throne you're probably going to be pretty hated yourself as well. Turns out not that many people are on board with usurping power structures in Westeros.
+
+```{r}
+got.nodes <- data.frame(name=got.stat%v%"vertex.names", totDegree=sna::degree(got.stat), inDegree=sna::degree(got.stat, cmode="indegree"), outDegree=sna::degree(got.stat, cmode="outdegree"))
+
+haters <- as.numeric(cmeans) + as.numeric(rmeans)
+names(haters) <- got.nodes$name
+print(paste('Mean cumulative likes/dislikes:', mean(haters)))
+
+arrange(data.frame(haters), haters)
+```
+
+Here I've created what I'm going to define as the Hater Index (lots of hating happening here in Westeros) of this group of core *Game of Thrones* characters. I added together the mean outdegree like/dislike of each character with their mean indegree like/dislike to get an overall score that acts as a general positivity/negativity score. If the absolute value of the Hater Index score is greater than five, that character must have either both positive or both negative incoming and outgoing relationships. 
+
+A Hater Index score close to zero (negatively or positively) should indicate that a character was pretty neutral to some extent. My goal here is to see if there is any association between the neutrality of a character and their degree centrality.
+
+```{r}
+data.frame(haters) %>%
+  filter(haters < 1 & haters > -1)
+
+got.nodes %>%
+  filter(name %in% c('Petyr.Baelish', 'Lancel.Lannister', 'Osha', 'Podrick.Payne', 'Shae', 'Catelyn.Stark'))
+```
+
+There are six characters who fall within $[-1,1]$ in the Hater Index. Interestingly, all but one are less than zero, though maybe not so significant since the mean of the haters list is -1.03. 
+
+Comparing the degree centrality of these six, Catelyn Stark has the highest total degree, with 76 out of the total 92 possibilities in the directed network. The next highest is Petyr Baelish whose place on this list is unsurprising as he spends much of his time conniving and backstabbing despite his perceived neutrality.
+
+```{r}
+top.degree <- got.nodes %>%
+  arrange(desc(totDegree)) %>%
+  slice(1:10)
+top.degree
+
+data.frame(haters) %>%
+  arrange(haters) %>%
+  slice(1:10)
+```
+
+Checking out the top ten most connected characters, Cateyln is right up at the top while our friends Stan and Jay round out the bottom of this list. Also at the top are four Lannisters (including Joffrey) and another two Starks (including Ree..I mean Theon), which represent seven out of the top ten most popular characters. 
+
+Comparing the Hater Index scores of these individuals reveals that, at a glance, there does not seem to be much of a relationship between one's overall likeability and their degree centrality within the network. This list may actually indicate the inverse of my initial hypothesis; those who are the biggest haters (in/out) tend to be more connected. The list of top ten haters shares a few names with the top ten degree centrality, but I would have to take more rigorous measures to validate that observation.
+
+For now, it feels safe to say that Dany, Stannis, and the Red Witch are one angry trio.
